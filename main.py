@@ -1,5 +1,3 @@
-
-
 ds_pin = machine.Pin(32)
 ds_sensor = ds18x20.DS18X20(onewire.OneWire(ds_pin))
 
@@ -35,4 +33,3 @@ while True:
     utime.sleep(5)
   except OSError as e:
     restart_and_reconnect()
-    
