@@ -1,4 +1,6 @@
 import utime
+import ntptime
+import ujson
 from umqtt.simple import MQTTClient
 import ubinascii
 import machine
@@ -11,16 +13,20 @@ esp.osdebug(None)
 import gc
 gc.collect()
 
-ssid = 'YOUR_SSID'
-password = 'YOUR_PASSWORD'
-mqtt_server = 'IP_ADDRESS_BROKER'
-mqtt_port = 1883
-mqtt_user = 'USERNAME'
-mqtt_passwd = 'PASSWORD'
-client_id = ubinascii.hexlify(machine.unique_id())
-# topic_sub = 'esp32/Temperature/data/'
-topic_pub = 'esp32/'
+configRead = open('config.json').read()
+config = ujson.loads(configRead)
 
+ssid = config["ssid"]
+password = config["password"]
+machinePin = config["machinePin"]
+mqttServer = config["mqttServer"]
+mqttPort = config["mqttPort"] if "mqttPort" in config else 1883
+mqttUser = config["mqttUser"] if "mqttUser" in config else None
+mqttPasswd = config["mqttPasswd"] if "mqttPasswd" in config else None
+clientId = ubinascii.hexlify(machine.unique_id())
+#topicSub = 'esp32/Temperature/data/'
+topicPub = config["topicPub"] if "topicPub" in config else 'esp32/'
+ntp = config["ntp"] if "ntp" in config else None
 
 station = network.WLAN(network.STA_IF)
 
@@ -32,3 +38,5 @@ while station.isconnected() == False:
 
 print('Connection successful')
 print(station.ifconfig())
+
+ntptime.host = ntp

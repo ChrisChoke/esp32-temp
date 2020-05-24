@@ -1,0 +1,6 @@
+{
+  "ssid": "YOUR_SSID",
+  "password": "YOUR_PASSWORD",
+  "machinePin": 32,
+  "mqttServer": "IP_ADDRESS"
+}

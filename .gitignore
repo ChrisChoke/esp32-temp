@@ -1,0 +1,6 @@
+# config
+config.json
+
+# Workspace
+gitesp32.code-workspace
+.vscode/
