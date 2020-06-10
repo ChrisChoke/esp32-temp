@@ -1,5 +1,6 @@
 # config
 config.json
+devices.json
 
 # Workspace
 gitesp32.code-workspace
