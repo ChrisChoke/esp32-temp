@@ -1,9 +1,5 @@
 import html
 
-# some str() convertings are a bit weird in case there is some trouble with comparing bytearrays as string type with
-# bytearray as string type which loaded from devices.json. ujson.dump() escapes "\" backslashes and if ujson.load()
-# will put the escaped string in dictionary. so some comparings are "bytearray(b'(\xeeWV\xb5\x01<a')" vs "bytearray(b'(\\xeeWV\\xb5\\x01<a')"
-
 def connect_and_subscribe():
   global clientId, mqttServer, topicSub
   client = MQTTClient(clientId, mqttServer, port=mqttPort, user=mqttUser, password=mqttPasswd, keepalive=30)
@@ -29,7 +25,7 @@ def dumpJson(jsonData: dict, fileName: str):
   wDevices.write(ujson.dumps(jsonData))
   wDevices.close()
 
-def checkDeviceAlive(owDevices: list, jsonData: dict):
+def checkDeviceAlive(owDevices: list, jsonData: dict) -> list:
   """
   check if devices.json contains oneWire devices are in scanned list to check if 
   devices.json is up to date
@@ -37,13 +33,21 @@ def checkDeviceAlive(owDevices: list, jsonData: dict):
   return list of missing devices
   """
   missingDevices = []
-  convOwDevices = [ str(i) for i in owDevices ]
   for key in jsonData:
-    if key in convOwDevices:
+    if key in owDevices:
       continue
     else:
       missingDevices.append(key)
   return missingDevices
+
+def rom2str(rom: bytearray) -> str:
+        return ''.join('%02X' % i for i in iter(rom))
+
+def str2rom(rom: str) -> bytearray:
+    a = bytearray(8)
+    for i in range(8):
+        a[i] = int(rom[i * 2:i * 2 + 2], 16)
+    return a
 
 def buildWebsite(devices: dict, missingDevlist: list):
   webHtml = html.html
@@ -53,7 +57,7 @@ def buildWebsite(devices: dict, missingDevlist: list):
     if key in missingDevlist:
       aliveDev= "missing"
       webHtml = webHtml + '<td><input type="text" disabled value="' + value + '" name="' + key + '" class=""></td>'
-      webHtml = webHtml + '<td><button name="rm_'+ key + '" class="button rm">&times;</button></td>'
+      webHtml = webHtml + '<td><button name="rm" value="'+ key + '" class="button rm">&times;</button></td>'
     else:
       aliveDev = "alive"
       webHtml = webHtml + '<td><input type="text" value="' + value + '" name="' + key + '" class=""></td>'
@@ -68,16 +72,17 @@ async def continousTempPublish():
     try:
       dsSensor.convert_temp()
       await uasyncio.sleep_ms(750)
-      for rom in roms:
-        friendlyName = devicesJson[str(rom)] if str(rom) in devicesJson else str(rom)
+      for rom in romsId:
+        friendlyName = devicesJson[rom] if rom in devicesJson else rom
+        readTemp = dsSensor.read_temp(str2rom(rom))
         print(friendlyName)
-        print(dsSensor.read_temp(rom))
+        print(readTemp)
         if ntp != None:
           timestamp = utime.localtime()
           client.publish(topicPub+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
         else:
           client.publish(topicPub+'timestamp', 'ntp not defined')
-        client.publish(topicPub+friendlyName+'/temperature', str(dsSensor.read_temp(rom)))
+        client.publish(topicPub+friendlyName+'/temperature', str(readTemp))
         client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
       await uasyncio.sleep_ms(5000)
     except OSError as e:
@@ -114,8 +119,9 @@ dsSensor = ds18x20.DS18X20(onewire.OneWire(dsPin))
 
 # scan dsSensors on board
 roms = dsSensor.scan()
-romsConvDict = { str(i) : str(i) for i in roms}
-print('Found DS devices: ', roms)
+romsId = [rom2str(i) for i in roms] # create Id list with strings
+romsIdDict = { i : i for i in romsId}
+print('Found DS devices: ', romsId)
 
 try:
     devicesRead = open('devices.json').read()
@@ -126,9 +132,9 @@ except OSError:
 # load devices.json and check if new device is found and add to devices.json
 devicesJson = ujson.loads(devicesRead)
 newDevicesPub = []
-for x in romsConvDict:
+for x in romsIdDict:
   if x in devicesJson:
-    print(x + 'already exist in devices.json')
+    print(x + ' already exist in devices.json')
   else:
     devicesJson[x] = x
     newDevicesPub.append(x)
@@ -138,7 +144,7 @@ dumpJson(devicesJson, 'devices.json')
 if newDevicesPub:
   print('new devices: ', newDevicesPub)
   client.publish(topicPub+'system', 'New Sensors found and added to devices.json: '+ str(newDevicesPub))
-missingDev = checkDeviceAlive(roms, devicesJson)
+missingDev = checkDeviceAlive(romsId, devicesJson)
 if missingDev:
   print('missing devices: ', missingDev)
   client.publish(topicPub+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
@@ -154,25 +160,22 @@ async def pre_request_handler(request):
 
 @app.route('/', methods=['GET', 'POST'])
 async def mainSite(request):
-  global current_task, buildHtml
+  global current_task
   if request.method == "POST":
     if "change" in request.form:
       for key in request.form:
-        if key.startswith('bytearray'):
+        if key == 'change':
+          continue
+        else:
           devicesJson[key] = request.form[key]
       dumpJson(devicesJson, 'devices.json')
-    if "reboot" in request.form:
+    elif "reboot" in request.form:
       restart_and_reconnect()
-    # weird solution below to get removing keys. but no other idea for now
-    # other solution with name="rm" value="bytearrayXXX" as string in html
-    # did not work. KeyError will raised at devicesJson.pop()
-    rmKey = list(request.form.keys())
-    for key in rmKey:
-      if key.startswith('rm_'):
-        devicesJson.pop(key[3:])
-        missingDev.remove(key[3:])
-        dumpJson(devicesJson, 'devices.json')
-        break
+    elif "rm" in request.form:
+      rmKey = request.form['rm']
+      devicesJson.pop(rmKey)
+      missingDev.remove(rmKey)
+      dumpJson(devicesJson, 'devices.json')
   buildHtml = buildWebsite(devicesJson, missingDev)
   current_task = uasyncio.create_task(continousTempPublish())
   return Response(body=buildHtml, headers={'Content-Type': 'text/html'})
