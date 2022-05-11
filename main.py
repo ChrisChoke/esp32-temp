@@ -75,14 +75,15 @@ async def continousTempPublish():
       for rom in romsId:
         friendlyName = devicesJson[rom] if rom in devicesJson else rom
         readTemp = dsSensor.read_temp(str2rom(rom))
+        tempRounded = '{0:.2f}'.format(readTemp)
         print(friendlyName)
-        print(readTemp)
+        print(tempRounded)
         if ntp != None:
           timestamp = utime.localtime()
           client.publish(topicPub+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
         else:
           client.publish(topicPub+'timestamp', 'ntp not defined')
-        client.publish(topicPub+friendlyName+'/temperature', str(readTemp))
+        client.publish(topicPub+friendlyName+'/temperature', tempRounded)
         client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
       await uasyncio.sleep_ms(5000)
     except OSError as e:
