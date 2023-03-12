@@ -1,21 +1,22 @@
-import html
+# import microdot early to alloc needed memory
+from microdot_asyncio import Microdot, Response
+from microdot_utemplate import render_template
+from mqtt_as import MQTTClient, config
+gc.collect()
 
-def connect_and_subscribe():
-  global clientId, mqttServer, topicSub
-  client = MQTTClient(clientId, mqttServer, port=mqttPort, user=mqttUser, password=mqttPasswd, keepalive=30)
-  client.set_last_will(topicPub+'system/state', 'Offline')
-  client.connect()
-  print('Connected to %s MQTT broker' % (mqttServer))
-  client.publish(topicPub+'system/state', 'Online')
-  return client
-
-def restart_and_reconnect():
-  try:
-    client.publish(topicPub+'system/state', 'Offline')
-  finally:
-    print('Rebooting. . .')
-    utime.sleep(10)
-    machine.reset()
+import utime
+import ntptime
+import ujson
+from sys import platform
+import uasyncio
+import gc
+import micropython
+import machine
+import onewire
+import ds18x20
+import esp
+esp.osdebug(None)
+gc.collect()
 
 def dumpJson(jsonData: dict, fileName: str):
   """
@@ -49,25 +50,7 @@ def str2rom(rom: str) -> bytearray:
         a[i] = int(rom[i * 2:i * 2 + 2], 16)
     return a
 
-def buildWebsite(devices: dict, missingDevlist: list):
-  webHtml = html.html
-  for key, value in devices.items():
-    webHtml = webHtml + "<tr>"
-    webHtml = webHtml + '<td><input type="text" disabled value="' + key + '" class=""></td>'
-    if key in missingDevlist:
-      aliveDev= "missing"
-      webHtml = webHtml + '<td><input type="text" disabled value="' + value + '" name="' + key + '" class=""></td>'
-      webHtml = webHtml + '<td><button name="rm" value="'+ key + '" class="button rm">&times;</button></td>'
-    else:
-      aliveDev = "alive"
-      webHtml = webHtml + '<td><input type="text" value="' + value + '" name="' + key + '" class=""></td>'
-      webHtml = webHtml + '<td><i style="color:green;">' + aliveDev + '</i></td>'
-    webHtml = webHtml + "</tr>"
-  webHtml = webHtml + "</table>"
-  webHtml = webHtml + '<button name="change" class="button">Change</button><button name="reboot" class="button button2">Reboot</button></form>'
-  return webHtml
-
-async def continousTempPublish():
+async def continousTempPublish(client):
   while True:
     try:
       dsSensor.convert_temp()
@@ -80,42 +63,129 @@ async def continousTempPublish():
         print(tempRounded)
         if ntp != None:
           timestamp = utime.localtime()
-          client.publish(topicPub+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
+          await client.publish(topicPub+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
         else:
-          client.publish(topicPub+'timestamp', 'ntp not defined')
-        client.publish(topicPub+friendlyName+'/temperature', tempRounded)
-        client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
+          await client.publish(topicPub+'timestamp', 'ntp not defined')
+        await client.publish(topicPub+friendlyName+'/temperature', tempRounded)
+        #await client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
+      uasyncio.create_task(pulse())
+      gc.collect()
       await uasyncio.sleep_ms(5000)
     except OSError as e:
       print('An exception has occured: '+ str(e))
-      restart_and_reconnect()
+      machine.reset()
     except onewire.OneWireError as e:
       print('An exception has occured: '+ repr(e))
-      restart_and_reconnect()
+      machine.reset()
     except Exception as e:
       # catching crc exception to keep script running
       print('An exception has occured: '+ str(e))
-      client.publish(topicPub+'system/errors', str(e))
-      #restart_and_reconnect()
+      await client.publish(topicPub+'system/errors', str(e))
+      machine.reset()
 
-def start_server():
-    print('Starting microdot app')
-    try:
-        app.run(port=80)
-    except:
-        app.shutdown()
+async def pulse():
+  """
+  let pulse the blue led
+  """
+  blue_led(False)
+  await uasyncio.sleep(1)
+  blue_led(True)
+
+async def down(client):
+  """
+  coroutine for connection down
+  """
+  while True:
+      await client.down.wait()  # Pause until connectivity changes
+      client.down.clear()
+      wifi_led(False)
+      print('WiFi or broker is down.')
+
+async def up(client):
+  """
+  coroutine for connection up
+  """
+  while True:
+      await client.up.wait()
+      client.up.clear()
+      wifi_led(True)
+      await client.publish(f'{topicPub}system/state', 'Online')
+      uasyncio.create_task(pulse())
+
+async def main(client):
+
+  await client.connect()
+  if ntp != None:
+    ntptime.settime()
+  
+  # publish to mqtt new and missing devices if list not empty
+  if newDevicesPub:
+    print('new devices: ', newDevicesPub)
+    await client.publish(topicPub+'system', 'New Sensors found and added to devices.json: '+ str(newDevicesPub))
+  
+  if missingDev:
+    print('missing devices: ', missingDev)
+    await client.publish(topicPub+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
+
+  uasyncio.create_task(continousTempPublish(client))
+  
+def start_async_app():
+  gc.collect()
+  loop= uasyncio.get_event_loop()
+  for task in (up, down, main):
+        loop.create_task(task(client))
+  loop.create_task(app.start_server(port=80))
+  loop.run_forever()
 
 ########## entry point ##########
 
-try:
-  client = connect_and_subscribe()
-except OSError as err:
-  print('An exception has occured: '+ str(err))
-  restart_and_reconnect()
+gc.collect()
 
-if ntp != None:
-  ntptime.settime()
-dsPin = machine.Pin(machinePin)
+# merge mqtt_as config with our config.json for defaulting some settings
+configRead = open('config.json').read()
+configJson = ujson.loads(configRead)
+config.update(configJson)
+
+topicPub = config["topicPub"] if "topicPub" in config else 'esp32Temp/'
+ntp = config["ntp"] if "ntp" in config else None
+
+ntptime.host = ntp
+
+config["queue_len"] = 1
+config['will'] = ( f'{topicPub}system/state', 'Offline', False, 0 )
+MQTTClient.DEBUG = True
+client = MQTTClient(config)
+
+# set up webrepl if password in config.json
+if config["webreplpw"]:
+    try:
+        import webrepl_cfg
+    except ImportError:
+        try:
+            with open("webrepl_cfg.py", "w") as f:
+                f.write("PASS = %r\n" % config["webreplpw"])
+        except Exception as e:
+            print("Can't start webrepl: {!s}".format(e))
+    try:
+        import webrepl
+
+        webrepl.start()
+    except Exception as e:
+        print("Can't start webrepl: {!s}".format(e))
+
+# setup red and blue led which can connected to the board
+if platform == 'esp8266' or platform == 'esp32':
+    from machine import Pin
+    def ledfunc(pin, active=0):
+        pin = pin
+        def func(v):
+            pin(not v)  # Active low on ESP8266
+        return pin if active else func
+    wifi_led = ledfunc(Pin(0, Pin.OUT, value = 1))  # Red LED for WiFi fail/not ready yet
+    blue_led = ledfunc(Pin(2, Pin.OUT, value = 0))  # Message send
+
+
+dsPin = machine.Pin(config['machinePin'])
 dsSensor = ds18x20.DS18X20(onewire.OneWire(dsPin))
 
 # scan dsSensors on board
@@ -141,27 +211,14 @@ for x in romsIdDict:
     newDevicesPub.append(x)
 dumpJson(devicesJson, 'devices.json')
 
-# publish to mqtt new and missing devices if list not empty
-if newDevicesPub:
-  print('new devices: ', newDevicesPub)
-  client.publish(topicPub+'system', 'New Sensors found and added to devices.json: '+ str(newDevicesPub))
 missingDev = checkDeviceAlive(romsId, devicesJson)
-if missingDev:
-  print('missing devices: ', missingDev)
-  client.publish(topicPub+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
 
 # create webserver
 app = Microdot()
-current_task = None
-
-@app.before_request
-async def pre_request_handler(request):
-  if current_task:
-    current_task.cancel()
+Response.default_content_type = 'text/html'
 
 @app.route('/', methods=['GET', 'POST'])
 async def mainSite(request):
-  global current_task
   if request.method == "POST":
     if "change" in request.form:
       for key in request.form:
@@ -171,15 +228,17 @@ async def mainSite(request):
           devicesJson[key] = request.form[key]
       dumpJson(devicesJson, 'devices.json')
     elif "reboot" in request.form:
-      restart_and_reconnect()
+      machine.reset()
     elif "rm" in request.form:
       rmKey = request.form['rm']
       devicesJson.pop(rmKey)
       missingDev.remove(rmKey)
       dumpJson(devicesJson, 'devices.json')
-  buildHtml = buildWebsite(devicesJson, missingDev)
-  current_task = uasyncio.create_task(continousTempPublish())
-  return Response(body=buildHtml, headers={'Content-Type': 'text/html'})
+  return render_template('index.tpl', devices=devicesJson, missingDevlist=missingDev)
 
-current_task = uasyncio.create_task(continousTempPublish())
-start_server()
+try:
+  start_async_app()
+except:
+  app.shutdown()
+  client.close()
+  blue_led(True)

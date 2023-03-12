@@ -1,5 +1,6 @@
-html = """\
-    <html>
+{% args devices, missingDevlist %}
+<!doctype html>
+<html>
   <head>
     <title>ESP Web Server</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -59,4 +60,24 @@ html = """\
           <th>Raw Address</th>
           <th>Friendly name</th>
           <th>Alive</th>
-        </tr><form method="post" action="">"""
+        </tr>
+        <form method="post" action="">
+          {% for key, value in devices.items() %}
+            <tr>
+            <td><input type="text" disabled value="{{key}}" class=""></td>
+            {% if key in missingDevlist %}
+            {% set aliveDev = "missing" %}
+            <td><input type="text" disabled value="{{value}}" name="{{key}}" class=""></td>
+            <td><button name="rm" value="{{key}}" class="button rm">&times;</button></td>
+            {% else %}
+            {% set aliveDev = "alive" %}
+            <td><input type="text" value="{{value}}" name="{{key}}" class=""></td>
+            <td><i style="color:green;">{{aliveDev}}</i></td>
+            {% endif %}
+            </tr>
+          {% endfor %}
+        </tr>
+      </table>
+      <button name="change" class="button">Change</button><button name="reboot" class="button button2">Reboot</button>
+      </form>
+  </body>

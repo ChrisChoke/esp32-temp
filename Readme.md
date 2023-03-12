@@ -3,14 +3,21 @@
 ## Instructions
 
 A few simple lines to read the temperature from multiple ds18x20 sensors on a ESP32 board with micropython and publish it via mqtt to your mqtt-broker.
+This little software contains a Website to configure friendly-names for the sensors, reboot the esp or delete missing devices from devices.json.
 
 ### boot.py:
 
-Perpare all variables getting from config.json and connect to your WiFi.
+Empty
 
 ### main.py:
 
 Includes the Main code.
+
+You can connect on Pin 0 a red LED and on Pin 2 a blue LED to check if wifi is down (red led turn on) and if a
+mqtt message is sent (blue led pulse for 1 sec)
+
+wifi_led = ledfunc(Pin(0, Pin.OUT, value = 1))  # Red LED for WiFi fail/not ready yet
+blue_led = ledfunc(Pin(2, Pin.OUT, value = 0))  # Message send
 
 ### config.json:
 
@@ -21,14 +28,15 @@ possible configs:
 ```
 {
     "ssid" : "YOUR_SSID",
-    "password" : "YOUR_PASSWORD",
+    "wifi_pw" : "YOUR_PASSWORD",
     "machinePin" : 32,
-    "mqttServer" : "IP_ADDRESS",
-    "mqttPort" : 1111,              // default 1883
-    "mqttUser" : "USERNAME",        // default None
-    "mqttPasswd" : "PASSWORD",      // default None
+    "server" : "IP_ADDRESS",
+    "port" : 1111,              // default 1883
+    "user" : "USERNAME",        // default None
+    "password" : "PASSWORD",      // default None
     "ntp": "IP_ADDRESS or DNS",     // default None
-    "topicPub" : "esp32/"           // default "esp32/"
+    "topicPub" : "esp32/",           // default "esp32/"
+    "webreplpw": "MYPASSWORD" // webreplpassword need to configure webrepl
 }
 ```
 ### devices.json
