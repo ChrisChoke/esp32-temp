@@ -81,7 +81,6 @@ async def continousTempPublish(client):
       # catching crc exception to keep script running
       print('An exception has occured: '+ str(e))
       await client.publish(topicPub+'system/errors', str(e))
-      machine.reset()
 
 async def pulse():
   """
