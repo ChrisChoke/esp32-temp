@@ -2,6 +2,8 @@
 from microdot_asyncio import Microdot, Response
 from microdot_utemplate import render_template
 from mqtt_as import MQTTClient, config
+
+import gc
 gc.collect()
 
 import utime
@@ -9,7 +11,6 @@ import ntptime
 import ujson
 from sys import platform
 import uasyncio
-import gc
 import micropython
 import machine
 import onewire
