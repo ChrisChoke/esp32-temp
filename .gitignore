@@ -3,5 +3,8 @@ config.json
 devices.json
 
 # Workspace
-gitesp32.code-workspace
+*.code-workspace
 .vscode/
+__pychache__
+mqtt_local.py
+*.bin
