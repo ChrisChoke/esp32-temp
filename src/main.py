@@ -6,11 +6,11 @@ from mqtt_as import MQTTClient, config
 import gc
 gc.collect()
 
-import utime
+import time
 import ntptime
-import ujson
+import json
 from sys import platform
-import uasyncio
+import asyncio
 import micropython
 import machine
 import onewire
@@ -24,7 +24,7 @@ def dumpJson(jsonData: dict, fileName: str):
   simply dump dictionary to json file
   """
   wDevices = open(fileName, 'w')
-  wDevices.write(ujson.dumps(jsonData))
+  wDevices.write(json.dumps(jsonData))
   wDevices.close()
 
 def checkDeviceAlive(owDevices: list, jsonData: dict) -> list:
@@ -55,7 +55,7 @@ async def continousTempPublish(client):
   while True:
     try:
       dsSensor.convert_temp()
-      await uasyncio.sleep_ms(750)
+      await asyncio.sleep_ms(750)
       for rom in romsId:
         friendlyName = devicesJson[rom] if rom in devicesJson else rom
         readTemp = dsSensor.read_temp(str2rom(rom))
@@ -63,15 +63,15 @@ async def continousTempPublish(client):
         print(friendlyName)
         print(tempRounded)
         if ntp != None:
-          timestamp = utime.localtime()
+          timestamp = time.localtime()
           await client.publish(topicPub+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
         else:
           await client.publish(topicPub+'timestamp', 'ntp not defined')
         await client.publish(topicPub+friendlyName+'/temperature', tempRounded)
         #await client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
-      uasyncio.create_task(pulse())
+      asyncio.create_task(pulse())
       gc.collect()
-      await uasyncio.sleep_ms(5000)
+      await asyncio.sleep_ms(5000)
     except OSError as e:
       print('An exception has occured: '+ str(e))
       machine.reset()
@@ -88,7 +88,7 @@ async def pulse():
   let pulse the blue led
   """
   blue_led(False)
-  await uasyncio.sleep(1)
+  await asyncio.sleep(1)
   blue_led(True)
 
 async def down(client):
@@ -110,7 +110,7 @@ async def up(client):
       client.up.clear()
       wifi_led(True)
       await client.publish(f'{topicPub}system/state', 'Online')
-      uasyncio.create_task(pulse())
+      asyncio.create_task(pulse())
 
 async def main(client):
 
@@ -127,11 +127,11 @@ async def main(client):
     print('missing devices: ', missingDev)
     await client.publish(topicPub+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
 
-  uasyncio.create_task(continousTempPublish(client))
+  asyncio.create_task(continousTempPublish(client))
   
 def start_async_app():
   gc.collect()
-  loop= uasyncio.get_event_loop()
+  loop= asyncio.get_event_loop()
   for task in (up, down, main):
         loop.create_task(task(client))
   loop.create_task(app.start_server(port=80))
@@ -143,7 +143,7 @@ gc.collect()
 
 # merge mqtt_as config with our config.json for defaulting some settings
 configRead = open('config.json').read()
-configJson = ujson.loads(configRead)
+configJson = json.loads(configRead)
 config.update(configJson)
 
 topicPub = config["topicPub"] if "topicPub" in config else 'esp32Temp/'
@@ -201,7 +201,7 @@ except OSError:
     devicesRead = open('devices.json').read()
 
 # load devices.json and check if new device is found and add to devices.json
-devicesJson = ujson.loads(devicesRead)
+devicesJson = json.loads(devicesRead)
 newDevicesPub = []
 for x in romsIdDict:
   if x in devicesJson:
