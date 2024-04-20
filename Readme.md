@@ -2,6 +2,8 @@
 
 ## Instructions
 
+**Micropython >= 1.21**
+
 A few simple lines to read the temperature from multiple ds18x20 sensors on a ESP32 board with micropython and publish it via mqtt to your mqtt-broker.
 This little software contains a Website to configure friendly-names for the sensors, reboot the esp or delete missing devices from devices.json.
 
@@ -42,8 +44,11 @@ possible configs:
 ### devices.json
 
 The devices.json includes all connected ds18x20 sensors. The sensors will automaticliy append to this file on startup and you get information with mqtt message at esp32/system if new sensors are found.
-You can download devices.json from the board and put a friendlyName in the value section and put it back to the board, or creating a readable json file with the bytearray and a friendlyName and put it to the board. The bytearray you can copy from the mqtt message how explained above.
-Its recommend to do that, because the sensors will provide as bytearray. It looks a bit ugly for the mqtt topic and can generated another subtopic if there is a "/" in the bytearray.
+
+You can set a friendly name for each temperature sensor via website.
+On this website you can remove old sensors which aren't on the onewire-bus anymore.
+
+**hint:** For the ds18x20 you need a pull-up resistor to read values from it. Most tutorials recommended a 4k7 resistor. In my build, i have 8 sensor running and i needed approximately 1k5 ohm. With bigger resistant not all sensors were identified on the bus.
 
 ### MQTT
 
@@ -59,9 +64,6 @@ get the connection state to mqtt-broker:</br>
 
 'Online' or </br>
 'Offline'
-
-#### esp32/system/linkquality
-get the wifi quality as rssi.
 
 #### esp32/friendlyName/temperature
 get the temperature of the ds18x20 sensors in °C
