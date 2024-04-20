@@ -1,6 +1,6 @@
 # import microdot early to alloc needed memory
-from microdot_asyncio import Microdot, Response
-from microdot_utemplate import render_template
+from microdot import Microdot, Response
+from microdot.utemplate import Template
 from mqtt_as import MQTTClient, config
 
 import gc
@@ -234,7 +234,7 @@ async def mainSite(request):
       devicesJson.pop(rmKey)
       missingDev.remove(rmKey)
       dumpJson(devicesJson, 'devices.json')
-  return render_template('index.tpl', devices=devicesJson, missingDevlist=missingDev)
+  return await Template('index.tpl').render_async(devices=devicesJson, missingDevlist=missingDev)
 
 try:
   start_async_app()
