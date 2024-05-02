@@ -2,6 +2,7 @@
 from microdot import Microdot, Response
 from microdot.utemplate import Template
 from mqtt_as import MQTTClient, config
+from homeassistant import home_assistant
 
 import gc
 gc.collect()
@@ -127,6 +128,9 @@ async def main(client):
     print('missing devices: ', missingDev)
     await client.publish(topicPub+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
 
+  if homeAssistant and name:
+    allived_devs = {k:devicesJson[k] for k in devicesJson if not k in missingDev}  # announce only living sensors to ha
+    await home_assistant(client, name, topicPub, allived_devs)
   asyncio.create_task(continousTempPublish(client))
   
 def start_async_app():
@@ -147,6 +151,8 @@ configJson = json.loads(configRead)
 config.update(configJson)
 
 topicPub = config["topicPub"] if "topicPub" in config else 'esp32Temp/'
+homeAssistant = config["homeassistant"] if "homeassistant" in config else False
+name = config["name"] if "name" in config else None
 ntp = config["ntp"] if "ntp" in config else None
 
 ntptime.host = ntp
@@ -209,6 +215,11 @@ for x in romsIdDict:
   else:
     devicesJson[x] = x
     newDevicesPub.append(x)
+
+# sort dict by keys. On every boot the order was different
+sort_devices = sorted(devicesJson.items())
+sorted_devices = {k: v for k, v in sort_devices}
+devicesJson = sorted_devices
 dumpJson(devicesJson, 'devices.json')
 
 missingDev = checkDeviceAlive(romsId, devicesJson)

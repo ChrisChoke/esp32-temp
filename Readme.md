@@ -38,7 +38,9 @@ possible configs:
     "password" : "PASSWORD",      // default None
     "ntp": "IP_ADDRESS or DNS",     // default None
     "topicPub" : "esp32/",           // default "esp32/"
-    "webreplpw": "MYPASSWORD" // webreplpassword need to configure webrepl
+    "webreplpw": "MYPASSWORD", // webreplpassword need to configure webrepl
+    "homeassistant": true,  // default false
+    "name": "heater"    // default None, needs in combination with homeassistant for device name
 }
 ```
 ### devices.json
