@@ -2,7 +2,7 @@
 from microdot import Microdot, Response
 from microdot.utemplate import Template
 from mqtt_as import MQTTClient, config
-from homeassistant import home_assistant
+from homeassistant import home_assistant, delete_from_ha
 
 import gc
 gc.collect()
@@ -244,6 +244,8 @@ async def mainSite(request):
       rmKey = request.form['rm']
       devicesJson.pop(rmKey)
       missingDev.remove(rmKey)
+      if homeAssistant:
+        await delete_from_ha(client, name, rmKey)
       dumpJson(devicesJson, 'devices.json')
   return await Template('index.tpl').render_async(devices=devicesJson, missingDevlist=missingDev)
 
