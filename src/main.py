@@ -247,7 +247,7 @@ async def mainSite(request):
       if homeAssistant:
         await delete_from_ha(client, name, rmKey)
       dumpJson(devicesJson, 'devices.json')
-  return await Template('index.tpl').render_async(devices=devicesJson, missingDevlist=missingDev)
+  return Template('index.tpl').render(devices=devicesJson, missingDevlist=missingDev)
 
 try:
   start_async_app()
