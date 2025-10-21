@@ -2,6 +2,7 @@
 from microdot import Microdot, Response
 from microdot.utemplate import Template
 from mqtt_as import MQTTClient, config
+from config import Config
 from homeassistant import home_assistant, delete_from_ha
 
 import gc
@@ -63,12 +64,12 @@ async def continousTempPublish(client):
         tempRounded = '{0:.2f}'.format(readTemp)
         print(friendlyName)
         print(tempRounded)
-        if ntp != None:
+        if config["ntp"] != None:
           timestamp = time.localtime()
-          await client.publish(topicPub+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
+          await client.publish(config["topicPub"]+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
         else:
-          await client.publish(topicPub+'timestamp', 'ntp not defined')
-        await client.publish(topicPub+friendlyName+'/temperature', tempRounded)
+          await client.publish(config["topicPub"]+'timestamp', 'ntp not defined')
+        await client.publish(config["topicPub"]+friendlyName+'/temperature', tempRounded)
         #await client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
       asyncio.create_task(pulse())
       gc.collect()
@@ -82,7 +83,7 @@ async def continousTempPublish(client):
     except Exception as e:
       # catching crc exception to keep script running
       print('An exception has occured: '+ str(e))
-      await client.publish(topicPub+'system/errors', str(e))
+      await client.publish(config["topicPub"]+'system/errors', str(e))
 
 async def pulse():
   """
@@ -110,27 +111,28 @@ async def up(client):
       await client.up.wait()
       client.up.clear()
       wifi_led(True)
-      await client.publish(f'{topicPub}system/state', 'Online')
+      await client.publish(f'{config["topicPub"]}system/state', 'Online')
       asyncio.create_task(pulse())
 
 async def main(client):
 
   await client.connect()
-  if ntp != None:
+  if config["ntp"] != None:
+    ntptime.host = config["ntp"]
     ntptime.settime()
   
   # publish to mqtt new and missing devices if list not empty
   if newDevicesPub:
     print('new devices: ', newDevicesPub)
-    await client.publish(topicPub+'system', 'New Sensors found and added to devices.json: '+ str(newDevicesPub))
+    await client.publish(config["topicPub"]+'system', 'New Sensors found and added to devices.json: '+ str(newDevicesPub))
   
   if missingDev:
     print('missing devices: ', missingDev)
-    await client.publish(topicPub+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
+    await client.publish(config["topicPub"]+'system', 'Some Sensors from devices.json are missing: '+ str(missingDev))
 
-  if homeAssistant and name:
+  if config["homeassistant"] and config["name"]:
     allived_devs = {k:devicesJson[k] for k in devicesJson if not k in missingDev}  # announce only living sensors to ha
-    await home_assistant(client, name, topicPub, allived_devs)
+    await home_assistant(client, config["name"], config["topicPub"], allived_devs)
   asyncio.create_task(continousTempPublish(client))
   
 def start_async_app():
@@ -145,20 +147,9 @@ def start_async_app():
 
 gc.collect()
 
-# merge mqtt_as config with our config.json for defaulting some settings
-configRead = open('config.json').read()
-configJson = json.loads(configRead)
-config.update(configJson)
+conf = Config("config.json")
+config = conf.config
 
-topicPub = config["topicPub"] if "topicPub" in config else 'esp32Temp/'
-homeAssistant = config["homeassistant"] if "homeassistant" in config else False
-name = config["name"] if "name" in config else None
-ntp = config["ntp"] if "ntp" in config else None
-
-ntptime.host = ntp
-
-config["queue_len"] = 1
-config['will'] = ( f'{topicPub}system/state', 'Offline', False, 0 )
 MQTTClient.DEBUG = True
 client = MQTTClient(config)
 
@@ -244,8 +235,8 @@ async def mainSite(request):
       rmKey = request.form['rm']
       devicesJson.pop(rmKey)
       missingDev.remove(rmKey)
-      if homeAssistant:
-        await delete_from_ha(client, name, rmKey)
+      if config["homeassistant"]:
+        await delete_from_ha(client, config["name"], rmKey)
       dumpJson(devicesJson, 'devices.json')
   return Template('index.tpl').render(devices=devicesJson, missingDevlist=missingDev)
 
