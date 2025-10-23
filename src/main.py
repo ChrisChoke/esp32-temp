@@ -1,9 +1,10 @@
 # import microdot early to alloc needed memory
 from microdot import Microdot, Response
 from microdot.utemplate import Template
-from mqtt_as import MQTTClient, config
+from mqtt_as import MQTTClient
 from config import Config
 from homeassistant import home_assistant, delete_from_ha
+from ds18x20_sensor import DS18X20
 
 import gc
 gc.collect()
@@ -34,42 +35,31 @@ def checkDeviceAlive(owDevices: list, jsonData: dict) -> list:
   check if devices.json contains oneWire devices are in scanned list to check if 
   devices.json is up to date
 
-  return list of missing devices
+  :returns list: list of missing devices
   """
-  missingDevices = []
-  for key in jsonData:
-    if key in owDevices:
-      continue
-    else:
-      missingDevices.append(key)
+
+  for sensor in owDevices:
+     jsonData.pop(sensor.rom2str())
+  missingDevices = [k for k in jsonData]
+
   return missingDevices
-
-def rom2str(rom: bytearray) -> str:
-        return ''.join('%02X' % i for i in iter(rom))
-
-def str2rom(rom: str) -> bytearray:
-    a = bytearray(8)
-    for i in range(8):
-        a[i] = int(rom[i * 2:i * 2 + 2], 16)
-    return a
 
 async def continousTempPublish(client):
   while True:
     try:
       dsSensor.convert_temp()
       await asyncio.sleep_ms(750)
-      for rom in romsId:
-        friendlyName = devicesJson[rom] if rom in devicesJson else rom
-        readTemp = dsSensor.read_temp(str2rom(rom))
-        tempRounded = '{0:.2f}'.format(readTemp)
+      for rom in roms_objects:
+        friendlyName = rom.friendlyname
+        readTemp = rom.read_temp()
         print(friendlyName)
-        print(tempRounded)
+        print(readTemp)
         if config["ntp"] != None:
           timestamp = time.localtime()
           await client.publish(config["topicPub"]+'timestamp', str('{:02}'.format(timestamp[2]))+'.'+str('{:02}'.format(timestamp[1]))+'.'+str(timestamp[0])+' '+str('{:02}'.format(timestamp[3]+2))+':'+str('{:02}'.format(timestamp[4]))+':'+str('{:02}'.format(timestamp[5])))
         else:
           await client.publish(config["topicPub"]+'timestamp', 'ntp not defined')
-        await client.publish(config["topicPub"]+friendlyName+'/temperature', tempRounded)
+        await client.publish(config["topicPub"]+friendlyName+'/temperature', readTemp)
         #await client.publish(topicPub+'system/linkquailty', str(station.status('rssi')))
       asyncio.create_task(pulse())
       gc.collect()
@@ -181,16 +171,7 @@ if platform == 'esp8266' or platform == 'esp32':
     wifi_led = ledfunc(Pin(0, Pin.OUT, value = 1))  # Red LED for WiFi fail/not ready yet
     blue_led = ledfunc(Pin(2, Pin.OUT, value = 0))  # Message send
 
-
-dsPin = machine.Pin(config['machinePin'])
-dsSensor = ds18x20.DS18X20(onewire.OneWire(dsPin))
-
-# scan dsSensors on board
-roms = dsSensor.scan()
-romsId = [rom2str(i) for i in roms] # create Id list with strings
-romsIdDict = { i : i for i in romsId}
-print('Found DS devices: ', romsId)
-
+# read saved devices with their friendlyname
 try:
     devicesRead = open('devices.json').read()
 except OSError:
@@ -199,21 +180,37 @@ except OSError:
 
 # load devices.json and check if new device is found and add to devices.json
 devicesJson = json.loads(devicesRead)
-newDevicesPub = []
-for x in romsIdDict:
-  if x in devicesJson:
-    print(x + ' already exist in devices.json')
-  else:
-    devicesJson[x] = x
-    newDevicesPub.append(x)
 
-# sort dict by keys. On every boot the order was different
+dsPin = machine.Pin(config['machinePin'])
+dsSensor = ds18x20.DS18X20(onewire.OneWire(dsPin))
+
+# scan dsSensors on board
+roms = dsSensor.scan()
+roms_objects = [DS18X20(dsSensor, rom) for rom in roms]
+print('Found DS devices: ', roms_objects)
+
+# sensors append to deviceJson for dumping to file and check for existing to prevent overriding friendlyname
+newDevicesPub = []
+for sensor in roms_objects:
+   sensor_str = sensor.rom2str()
+   if sensor_str not in devicesJson:
+      devicesJson[sensor_str] = sensor_str
+      newDevicesPub.append(sensor_str)
+
+# get missing sensor strings and create new list without missing sensors
+missingDev = checkDeviceAlive(roms_objects, devicesJson.copy())
+saved_sensors = devicesJson.copy()
+for sensor in missingDev:
+   saved_sensors.pop(sensor)
+
+# redefine rom_objects to have object list with friendlynames from file without missing
+roms_objects = [DS18X20(dsSensor, k, friendlyname=v) for k,v in saved_sensors.items()]
+
+# sort dict by keys. On every boot the order was different. its just for website.
 sort_devices = sorted(devicesJson.items())
 sorted_devices = {k: v for k, v in sort_devices}
 devicesJson = sorted_devices
 dumpJson(devicesJson, 'devices.json')
-
-missingDev = checkDeviceAlive(romsId, devicesJson)
 
 # create webserver
 app = Microdot()
