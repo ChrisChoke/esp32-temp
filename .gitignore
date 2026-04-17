@@ -2,10 +2,13 @@
 config.json
 config.json.prod
 devices.json
+devices.json.prod
 
 # Workspace
 *.code-workspace
 .vscode/
+venv
+.venv
 __pychache__
 mqtt_local.py
 *.bin
