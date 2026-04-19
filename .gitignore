@@ -12,3 +12,4 @@ venv
 __pychache__
 mqtt_local.py
 *.bin
+dist/
