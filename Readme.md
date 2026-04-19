@@ -7,10 +7,6 @@
 A few simple lines to read the temperature from multiple ds18x20 sensors on a ESP32 board with micropython and publish it via mqtt to your mqtt-broker.
 This little software contains a Website to configure friendly-names for the sensors, reboot the esp or delete missing devices from devices.json.
 
-### boot.py:
-
-Empty
-
 ### main.py:
 
 Includes the Main code.
@@ -69,3 +65,10 @@ get the connection state to mqtt-broker:</br>
 
 #### esp32/friendlyName/temperature
 get the temperature of the ds18x20 sensors in °C
+
+## Building
+
+Execute build.sh and it will create a directory named ``dist/``` with .mpy file in it except main.py  
+main.py still be .py file because micropython dont execute main.mpy as starting script.
+
+Upload these directory to the board and have fun.
